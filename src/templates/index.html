@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video to MP3 Converter</title>
+    <style>
+        :root {
+            color-scheme: light dark;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            background: #f4f6f8;
+        }
+        main {
+            max-width: 760px;
+            margin: 3rem auto;
+            background: #ffffff;
+            padding: 2.5rem;
+            border-radius: 16px;
+            box-shadow: 0 15px 40px rgba(15, 30, 60, 0.15);
+        }
+        h1 {
+            margin-top: 0;
+            font-size: 2rem;
+        }
+        p {
+            line-height: 1.5;
+        }
+        form {
+            margin-top: 2rem;
+        }
+        fieldset {
+            border: 1px solid #d0d7de;
+            border-radius: 8px;
+            padding: 1rem 1.5rem 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        legend {
+            font-weight: 600;
+            padding: 0 0.5rem;
+        }
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+        }
+        .mode-toggle {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 0.75rem;
+        }
+        .hint {
+            font-size: 0.9rem;
+            color: #5f6c7b;
+            margin-top: 0.5rem;
+        }
+        input[type="file"] {
+            margin-top: 0.5rem;
+        }
+        button,
+        .button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            border: 0;
+            background: #2563eb;
+            color: #ffffff;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+        }
+        button:hover,
+        .button:hover {
+            background: #1d4ed8;
+        }
+        button:disabled {
+            background: #94a3b8;
+            cursor: not-allowed;
+        }
+        .alert {
+            padding: 1rem 1.5rem;
+            border-radius: 12px;
+            margin-bottom: 1.5rem;
+        }
+        .alert-info {
+            background: #eef2ff;
+            border: 1px solid #818cf8;
+            color: #1e1b4b;
+        }
+        .alert-error {
+            background: #fee2e2;
+            border: 1px solid #f87171;
+            color: #7f1d1d;
+        }
+        .status-panel {
+            margin-top: 2.5rem;
+            border: 1px solid #d0d7de;
+            border-radius: 12px;
+            padding: 1.5rem;
+            background: #f8fafc;
+        }
+        .status-panel h2 {
+            margin: 0 0 1rem 0;
+        }
+        .progress-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin: 1rem 0;
+        }
+        .progress {
+            flex: 1;
+            height: 10px;
+            background: #e2e8f0;
+            border-radius: 999px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            width: 0;
+            border-radius: 999px;
+            background: linear-gradient(90deg, #2563eb, #38bdf8);
+            transition: width 0.3s ease;
+        }
+        .muted {
+            color: #64748b;
+            font-size: 0.95rem;
+        }
+        ul {
+            padding-left: 1.5rem;
+        }
+        section.list-group {
+            margin-top: 1.5rem;
+        }
+        section.list-group h3 {
+            margin-bottom: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+<main>
+    <h1>Video to MP3 Converter</h1>
+    <p>Upload one or more video files, or switch to folder mode to convert everything in a directory. When the conversion finishes you'll receive a download button for a ZIP containing all extracted audio tracks.</p>
+
+    <div id="alert-box" class="alert alert-info" hidden></div>
+
+    <form id="converter-form" action="{{ url_for('convert') }}" method="post" enctype="multipart/form-data">
+        <fieldset>
+            <legend>Select upload mode</legend>
+            <div class="mode-toggle">
+                <label><input type="radio" name="mode" value="files" checked> Files</label>
+                <label><input type="radio" name="mode" value="folder"> Folder</label>
+            </div>
+            <label for="videos">Choose video files</label>
+            <input id="videos" name="videos" type="file" accept="video/*" multiple required>
+            <p class="hint">Most browsers support selecting an entire folder when Folder mode is enabled. The converter keeps your folder structure inside the ZIP download.</p>
+        </fieldset>
+
+        <button id="submit-btn" type="submit">Convert to MP3</button>
+    </form>
+
+    <section id="status-panel" class="status-panel" hidden>
+        <h2>Status</h2>
+        <p id="status-message" class="muted">Waiting for conversion…</p>
+        <div class="progress-wrapper">
+            <div class="progress">
+                <div id="progress-fill" class="progress-fill"></div>
+            </div>
+            <span id="progress-label" class="muted">0%</span>
+        </div>
+        <p id="progress-summary" class="muted"></p>
+        <p id="current-file" class="muted"></p>
+        <div id="current-file-progress" class="progress-wrapper" hidden>
+            <div class="progress">
+                <div id="current-progress-fill" class="progress-fill"></div>
+            </div>
+            <span id="current-progress-label" class="muted">0%</span>
+        </div>
+
+        <button type="button" id="download-btn" hidden disabled>Download MP3 ZIP</button>
+
+        <section id="generated-container" class="list-group" hidden>
+            <h3>Generated audio</h3>
+            <ul id="generated-list"></ul>
+        </section>
+
+        <section id="errors-container" class="list-group" hidden>
+            <h3>Errors</h3>
+            <ul id="error-list"></ul>
+        </section>
+
+        <section id="unsupported-container" class="list-group" hidden>
+            <h3>Unsupported uploads</h3>
+            <ul id="unsupported-list"></ul>
+        </section>
+    </section>
+</main>
+
+<script>
+    const fileInput = document.getElementById('videos');
+    const modeInputs = document.querySelectorAll('input[name="mode"]');
+    const form = document.getElementById('converter-form');
+    const submitBtn = document.getElementById('submit-btn');
+    const alertBox = document.getElementById('alert-box');
+
+    const statusPanel = document.getElementById('status-panel');
+    const statusMessage = document.getElementById('status-message');
+    const progressFill = document.getElementById('progress-fill');
+    const progressLabel = document.getElementById('progress-label');
+    const progressSummary = document.getElementById('progress-summary');
+    const currentFile = document.getElementById('current-file');
+    const currentFileProgressWrapper = document.getElementById('current-file-progress');
+    const currentProgressFill = document.getElementById('current-progress-fill');
+    const currentProgressLabel = document.getElementById('current-progress-label');
+    const downloadBtn = document.getElementById('download-btn');
+
+    const generatedContainer = document.getElementById('generated-container');
+    const generatedList = document.getElementById('generated-list');
+    const errorsContainer = document.getElementById('errors-container');
+    const errorList = document.getElementById('error-list');
+    const unsupportedContainer = document.getElementById('unsupported-container');
+    const unsupportedList = document.getElementById('unsupported-list');
+
+    let activeJobId = null;
+    let pollTimeout = null;
+
+    modeInputs.forEach((mode) => {
+        mode.addEventListener('change', () => {
+            if (mode.value === 'folder' && mode.checked) {
+                fileInput.setAttribute('webkitdirectory', '');
+                fileInput.setAttribute('directory', '');
+            } else if (mode.checked) {
+                fileInput.removeAttribute('webkitdirectory');
+                fileInput.removeAttribute('directory');
+            }
+            fileInput.value = '';
+        });
+    });
+
+    downloadBtn.addEventListener('click', () => {
+        const url = downloadBtn.dataset.url;
+        if (url) {
+            window.location.href = url;
+        }
+    });
+
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+
+        if (!fileInput.files.length) {
+            showAlert('Please select at least one video file.', 'error');
+            return;
+        }
+
+        resetStatusPanel();
+        showAlert('Uploading videos…', 'info');
+        showStatusPanel(true);
+
+        const formData = new FormData(form);
+        toggleForm(true);
+
+        try {
+            const response = await fetch(form.action, { method: 'POST', body: formData });
+            const payload = await response.json().catch(() => ({}));
+
+            if (!response.ok) {
+                throw new Error(payload.error || 'Conversion request failed.');
+            }
+
+            activeJobId = payload.job_id;
+            showAlert('Conversion in progress. This may take a while for larger files.', 'info');
+            await pollStatus(payload.job_id);
+        } catch (error) {
+            showAlert(error.message || 'Something went wrong while starting the conversion.', 'error');
+            toggleForm(false);
+        }
+    });
+
+    async function pollStatus(jobId) {
+        clearTimeout(pollTimeout);
+
+        try {
+            const response = await fetch(`/status/${jobId}`);
+            if (response.status === 404) {
+                throw new Error('Conversion job was not found. It may have expired.');
+            }
+            if (!response.ok) {
+                throw new Error('Unable to check conversion status.');
+            }
+
+            const data = await response.json();
+            updateStatusPanel(data);
+
+            if (data.status === 'completed') {
+                showAlert('Conversion finished! Click the download button to save your audio.', 'info');
+                toggleForm(false);
+                return;
+            }
+
+            if (data.status === 'failed') {
+                showAlert(data.message || 'Conversion failed.', 'error');
+                toggleForm(false);
+                return;
+            }
+
+            pollTimeout = setTimeout(() => pollStatus(jobId), 1500);
+        } catch (error) {
+            showAlert(error.message || 'Error while checking conversion progress.', 'error');
+            toggleForm(false);
+        }
+    }
+
+    function toggleForm(disabled) {
+        submitBtn.disabled = disabled;
+        fileInput.disabled = disabled;
+        modeInputs.forEach((input) => { input.disabled = disabled; });
+    }
+
+    function showAlert(message, type) {
+        alertBox.textContent = message;
+        alertBox.hidden = false;
+        alertBox.classList.toggle('alert-info', type === 'info');
+        alertBox.classList.toggle('alert-error', type === 'error');
+    }
+
+    function showStatusPanel(visible) {
+        statusPanel.hidden = !visible;
+    }
+
+    function resetStatusPanel() {
+        progressFill.style.width = '0%';
+        progressLabel.textContent = '0%';
+        progressSummary.textContent = '';
+        currentFile.textContent = '';
+        currentFileProgressWrapper.hidden = true;
+        currentProgressFill.style.width = '0%';
+        currentProgressLabel.textContent = '0%';
+        statusMessage.textContent = 'Preparing conversion…';
+        downloadBtn.hidden = true;
+        downloadBtn.disabled = true;
+        downloadBtn.dataset.url = '';
+        generatedContainer.hidden = true;
+        errorsContainer.hidden = true;
+        unsupportedContainer.hidden = true;
+        generatedList.innerHTML = '';
+        errorList.innerHTML = '';
+        unsupportedList.innerHTML = '';
+    }
+
+    function updateStatusPanel(data) {
+        showStatusPanel(true);
+
+        if (data.message) {
+            statusMessage.textContent = data.message;
+        }
+
+        const total = data.total_files || 0;
+        const processed = data.processed_files || 0;
+        const converted = data.converted || 0;
+        let percent = 0;
+        if (total) {
+            let effective = processed;
+            const currentPercent = data.current_progress ?? 0;
+            if (data.current_file && currentPercent < 100 && processed < total) {
+                effective = Math.max(0, processed) + currentPercent / 100;
+            }
+            percent = Math.round(Math.min(100, (effective / total) * 100));
+        }
+
+        progressFill.style.width = `${Math.min(percent, 100)}%`;
+        progressLabel.textContent = `${percent}%`;
+        progressSummary.textContent = total
+            ? `Processed ${processed} of ${total} videos (${converted} converted successfully).`
+            : '';
+
+        if (data.current_file) {
+            currentFile.textContent = `Currently converting: ${data.current_file}`;
+            const currentPercent = data.current_progress ?? 0;
+            currentFileProgressWrapper.hidden = false;
+            currentProgressFill.style.width = `${Math.min(currentPercent, 100)}%`;
+            currentProgressLabel.textContent = `${Math.min(100, Math.max(0, Math.round(currentPercent)))}%`;
+        } else {
+            currentFile.textContent = '';
+            currentFileProgressWrapper.hidden = true;
+            currentProgressFill.style.width = '0%';
+            currentProgressLabel.textContent = '0%';
+        }
+
+        renderList(generatedContainer, generatedList, data.generated_files);
+        renderList(errorsContainer, errorList, data.errors);
+        renderList(unsupportedContainer, unsupportedList, data.unsupported_files);
+
+        if (data.status === 'completed' && data.download_url) {
+            downloadBtn.dataset.url = data.download_url;
+            downloadBtn.hidden = false;
+            downloadBtn.disabled = false;
+        } else {
+            downloadBtn.hidden = true;
+            downloadBtn.disabled = true;
+            downloadBtn.dataset.url = '';
+        }
+    }
+
+    function renderList(container, listElement, items) {
+        listElement.innerHTML = '';
+
+        if (!items || !items.length) {
+            container.hidden = true;
+            return;
+        }
+
+        container.hidden = false;
+        items.forEach((item) => {
+            const li = document.createElement('li');
+            li.textContent = item;
+            listElement.appendChild(li);
+        });
+    }
+</script>
+</body>
+</html>
